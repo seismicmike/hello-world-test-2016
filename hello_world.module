@@ -1,0 +1,183 @@
+<?php
+
+/**
+ * @file
+ * Main module file for the Hello World Module.
+ */
+
+/**
+ * Implements hook_page_alter().
+ *
+ * This appends the "Content starts here!" section to the beginning of the -
+ * page for Hello World nodes.
+ */
+function hello_world_page_build(&$page) {
+  // Check to see if we are viewing a hello world article node.
+  $node = menu_get_object('node', 1);
+
+  if ($node && 'hello_world_article' === $node->type) {
+    // Attach our CSS for styling the text.
+    $page['content']['#attached']['css'][] = drupal_get_path('module', 'hello_world') . '/hello_world.css';
+
+    // Disable sorting, so our weight is respected.
+    $page['content']['#sorted'] = FALSE;
+
+    // Add our content.
+    $page['content']['disclaimer'] = [
+      '#markup' => t('<div class="hello-world-content-start">Content starts here!</div>'),
+      '#weight' => -100,
+    ];
+  }
+  elseif (isset($page['sidebar_second']['hello_world_hello_world_articles'])) {
+    if (count($page['sidebar_second']) > 2) {
+      unset($page['sidebar_second']['hello_world_hello_world_articles']);
+    }
+    else {
+      unset($page['sidebar_second']);
+    }
+  }
+}
+
+/**
+ * Implements hook_permission().
+ */
+function hello_world_permission() {
+  return [
+    'view hello world article list' => [
+      'title' => t('View Hello World Article List'),
+      'description' => t('View a list of all Hello World Articles.'),
+    ],
+  ];
+}
+
+/**
+ * Get Hello World Articles.
+ *
+ * @return array
+ *   An indexed array of the node ids of hello world articles.
+ */
+function hello_world_get_all_article_nodes() {
+  return db_query('SELECT nid FROM {node} WHERE type=:type ORDER BY created DESC', [':type' => 'hello_world_article'])->fetchCol();
+}
+
+/**
+ * Access callback for hello world.
+ *
+ * @param string $permission
+ *   The permission being checked.
+ * @param int $uid
+ *   A uid to check for access. Omit to check the current user.
+ *
+ * @return bool
+ *   TRUE means access should be granted.
+ */
+function hello_world_access($permission, $uid = NULL) {
+  if (empty($uid)) {
+    global $user;
+    $uid = $user->uid;
+  }
+
+  return ($uid > 0);
+}
+
+/**
+ * Implements hook_node_access().
+ */
+function hello_world_node_access($node, $op, $account) {
+  if (is_object($node) && is_object($account)) {
+    if ('hello_world_article' === $node->type &&
+        !hello_world_access('view', $account->uid)) {
+      return NODE_ACCESS_DENY;
+    }
+  }
+
+  return NODE_ACCESS_IGNORE;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function hello_world_menu() {
+  $items = array();
+  $items['hello-world'] = array(
+    'title' => 'Hello World Articles',
+    'page callback' => 'hello_world_page',
+    'access callback' => 'hello_world_access',
+    'access arguments' => ['view hello world article list'],
+    'file' => 'hello_world.page.inc',
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function hello_world_menu_alter(&$items) {
+  // Make the /node page respect the Hello World Access callback.
+  $items['node']['access callback'] = 'hello_world_access';
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function hello_world_block_info() {
+  return [
+    'hello_world_articles' => [
+      'info' => t('Hello World Articles'),
+      'status' => 1,
+      'region' => 'sidebar_second',
+    ],
+  ];
+}
+
+/**
+ * Get node ids of hello world articles filed in an enabled category.
+ *
+ * @return array
+ *   An array of node ids.
+ */
+function hello_world_get_enabled_article_nodes() {
+  return db_query('SELECT
+      DISTINCT(s.entity_id)
+    FROM {field_data_field_sections} s
+    JOIN {field_data_field_enabled} e ON s.field_sections_tid = e.entity_id
+    WHERE e.entity_type = :e_entity_type
+    AND s.entity_type = :s_entity_type
+    AND s.bundle = :s_bundle
+    AND e.field_enabled_value = :enabled', [
+      ':e_entity_type' => 'taxonomy_term',
+      ':s_entity_type' => 'node',
+      ':s_bundle' => 'hello_world_article',
+      ':enabled' => 1,
+    ])->fetchCol();
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function hello_world_block_view($delta = '') {
+  if ('hello_world_articles' === $delta) {
+    $nids = hello_world_get_enabled_article_nodes();
+    $items = [];
+    foreach ($nids as $nid) {
+      $node = node_load($nid);
+      $items[] = l($node->title, 'node/' . $node->nid, [
+        'attributes' => ['classes' => 'hello-world-article-title-link'],
+      ]);
+    }
+    return [
+      'subject' => t('Hello World'),
+      'content' => [
+        'test' => [
+          '#theme' => 'item_list',
+          '#items' => $items,
+          '#type' => 'ul',
+          '#attributes' => [
+            'id' => 'hello-world-block-list',
+          ],
+        ],
+      ],
+    ];
+  }
+}

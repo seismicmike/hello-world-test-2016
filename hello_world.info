@@ -1,0 +1,5 @@
+name = Hello World
+description = Creates a list page and block for Hello World articles.
+core = 7.x
+version = 7.x-1.0
+dependencies[] = content_type_vocab_hello_world
